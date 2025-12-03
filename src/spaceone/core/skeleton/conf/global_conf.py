@@ -41,8 +41,26 @@ HANDLERS = {
 }
 
 # Connector Settings
-CONNECTORS = {
-}
+CONNECTORS = {}
+
+# gRPC Client Default Settings
+GRPC_DEFAULT_TIMEOUT = 180  # seconds
+GRPC_DEFAULT_MAX_RETRIES = 2
+
+# gRPC Method Retry and Timeout Configuration
+# 특정 resource.verb 조합에 대한 timeout과 retry 설정
+# 예시:
+# GRPC_METHOD_CONFIG = {
+#     "Domain.list": {
+#         "timeout": 60,
+#         "max_retries": 5
+#     },
+#     "Job.get": {
+#         "timeout": 300,
+#         "max_retries": 1
+#     }
+# }
+GRPC_METHOD_CONFIG = {}
 
 # Log Settings
 LOG = {

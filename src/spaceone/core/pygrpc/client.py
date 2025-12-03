@@ -9,11 +9,17 @@ from google.protobuf.descriptor import ServiceDescriptor, MethodDescriptor
 from grpc_reflection.v1alpha.proto_reflection_descriptor_database import (
     ProtoReflectionDescriptorDatabase,
 )
+from spaceone.core import config
 from spaceone.core.error import *
 
-_MAX_RETRIES = 2
+_DEFAULT_TIMEOUT = config.get_global("GRPC_DEFAULT_TIMEOUT", 180)
+_MAX_RETRIES = config.get_global("GRPC_DEFAULT_MAX_RETRIES", 2)
+
 _GRPC_CHANNEL = {}
 _LOGGER = logging.getLogger(__name__)
+
+_METADATA_KEY_TIMEOUT = "x_timeout"
+_METADATA_KEY_MAX_RETRIES = "x_max_retries"
 
 
 class _ClientCallDetails(ClientCallDetails):
@@ -37,7 +43,7 @@ class _ClientInterceptor(
         self._request_map = request_map
         self._channel_key = channel_key
         self.metadata = options.get("metadata", {})
-        self.timeout = timeout or 180
+        self.timeout = timeout or _DEFAULT_TIMEOUT
 
     def _check_message(self, client_call_details, request_or_iterator, is_stream):
         if client_call_details.method in self._request_map:
@@ -120,6 +126,12 @@ class _ClientInterceptor(
     def _retry_call(
         self, continuation, client_call_details, request_or_iterator, is_stream
     ):
+        max_retries = _MAX_RETRIES
+        for key, value in client_call_details.metadata:
+            if key == _METADATA_KEY_MAX_RETRIES:
+                max_retries = int(value)
+                break
+
         retries = 0
 
         while True:
@@ -143,7 +155,7 @@ class _ClientInterceptor(
                     e.error_code == "ERROR_GRPC_CONNECTION"
                     or e.status_code == "DEADLINE_EXCEEDED"
                 ):
-                    if retries >= _MAX_RETRIES:
+                    if retries >= max_retries:
                         channel = e.meta.get("channel")
                         if channel in _GRPC_CHANNEL:
                             _LOGGER.error(
@@ -183,9 +195,15 @@ class _ClientInterceptor(
         )
 
     def _create_new_call_details(self, client_call_details):
+        timeout = self.timeout
+        for key, value in client_call_details.metadata:
+            if key == _METADATA_KEY_TIMEOUT:
+                timeout = int(value)
+                break
+
         return _ClientCallDetails(
             method=client_call_details.method,
-            timeout=self.timeout,
+            timeout=timeout,
             metadata=client_call_details.metadata,
             credentials=client_call_details.credentials,
             wait_for_ready=client_call_details.wait_for_ready,
