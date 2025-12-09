@@ -52,12 +52,12 @@ GRPC_DEFAULT_MAX_RETRIES = 2
 # 예시:
 # GRPC_METHOD_CONFIG = {
 #     "Domain.list": {
-#         "timeout": 60,
-#         "max_retries": 5
+#         "x_timeout": 60,
+#         "x_max_retries": 5
 #     },
 #     "Job.get": {
-#         "timeout": 300,
-#         "max_retries": 1
+#         "x_timeout": 300,
+#         "x_max_retries": 1
 #     }
 # }
 GRPC_METHOD_CONFIG = {}

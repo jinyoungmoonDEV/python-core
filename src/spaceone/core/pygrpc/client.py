@@ -1,9 +1,10 @@
 import logging
 import types
+
 import grpc
 from grpc import ClientCallDetails
 from google.protobuf.json_format import ParseDict
-from google.protobuf.message_factory import MessageFactory  # , GetMessageClass
+from google.protobuf.message_factory import MessageFactory
 from google.protobuf.descriptor_pool import DescriptorPool
 from google.protobuf.descriptor import ServiceDescriptor, MethodDescriptor
 from grpc_reflection.v1alpha.proto_reflection_descriptor_database import (
@@ -12,8 +13,8 @@ from grpc_reflection.v1alpha.proto_reflection_descriptor_database import (
 from spaceone.core import config
 from spaceone.core.error import *
 
-_DEFAULT_TIMEOUT = config.get_global("GRPC_DEFAULT_TIMEOUT", 180)
-_MAX_RETRIES = config.get_global("GRPC_DEFAULT_MAX_RETRIES", 2)
+_DEFAULT_TIMEOUT = config.get_global("GRPC_DEFAULT_TIMEOUT")
+_MAX_RETRIES = config.get_global("GRPC_DEFAULT_MAX_RETRIES")
 
 _GRPC_CHANNEL = {}
 _LOGGER = logging.getLogger(__name__)
@@ -23,9 +24,12 @@ _METADATA_KEY_MAX_RETRIES = "x_max_retries"
 
 
 class _ClientCallDetails(ClientCallDetails):
-    def __init__(self, method, timeout, metadata, credentials, wait_for_ready):
+    def __init__(
+        self, method, timeout, max_retries, metadata, credentials, wait_for_ready
+    ):
         self.method = method
         self.timeout = timeout
+        self.max_retries = max_retries
         self.metadata = metadata
         self.credentials = credentials
         self.wait_for_ready = wait_for_ready
@@ -124,14 +128,13 @@ class _ClientInterceptor(
             self._check_error(e)
 
     def _retry_call(
-        self, continuation, client_call_details, request_or_iterator, is_stream
+        self,
+        continuation,
+        client_call_details,
+        request_or_iterator,
+        is_response_stream,
     ):
-        max_retries = _MAX_RETRIES
-        for key, value in client_call_details.metadata:
-            if key == _METADATA_KEY_MAX_RETRIES:
-                max_retries = int(value)
-                break
-
+        max_retries = getattr(client_call_details, "max_retries", _MAX_RETRIES)
         retries = 0
 
         while True:
@@ -140,7 +143,7 @@ class _ClientInterceptor(
                     client_call_details, request_or_iterator
                 )
 
-                if is_stream:
+                if is_response_stream:
                     response_or_iterator = self._generate_response(response_or_iterator)
                 else:
                     self._check_error(response_or_iterator)
@@ -195,15 +198,14 @@ class _ClientInterceptor(
         )
 
     def _create_new_call_details(self, client_call_details):
-        timeout = self.timeout
-        for key, value in client_call_details.metadata:
-            if key == _METADATA_KEY_TIMEOUT:
-                timeout = int(value)
-                break
+        metadata_dict = dict(client_call_details.metadata)
+        timeout = int(metadata_dict.get(_METADATA_KEY_TIMEOUT, self.timeout))
+        max_retries = int(metadata_dict.get(_METADATA_KEY_MAX_RETRIES, _MAX_RETRIES))
 
         return _ClientCallDetails(
             method=client_call_details.method,
             timeout=timeout,
+            max_retries=max_retries,
             metadata=client_call_details.metadata,
             credentials=client_call_details.credentials,
             wait_for_ready=client_call_details.wait_for_ready,

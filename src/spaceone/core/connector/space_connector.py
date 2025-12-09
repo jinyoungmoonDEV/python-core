@@ -17,9 +17,6 @@ __all__ = ["SpaceConnector"]
 _LOGGER = logging.getLogger(__name__)
 _TRACER = trace.get_tracer(__name__)
 
-_METADATA_KEY_TIMEOUT = "x_timeout"
-_METADATA_KEY_MAX_RETRIES = "x_max_retries"
-
 
 class SpaceConnector(BaseConnector):
     name = "SpaceConnector"
@@ -71,15 +68,8 @@ class SpaceConnector(BaseConnector):
         params = params or {}
         metadata = self._get_connection_metadata(token, x_domain_id, x_workspace_id)
 
-        method_key = f"{resource}.{verb}"
-        if method_key in self._grpc_method_config:
-            method_config = self._grpc_method_config[method_key]
-            if "timeout" in method_config:
-                metadata.append((_METADATA_KEY_TIMEOUT, str(method_config["timeout"])))
-            if "max_retries" in method_config:
-                metadata.append(
-                    (_METADATA_KEY_MAX_RETRIES, str(method_config["max_retries"]))
-                )
+        method_config = self._grpc_method_config.get(f"{resource}.{verb}", {})
+        metadata.extend((k, str(v)) for k, v in method_config.items())
 
         response_or_iterator = getattr(getattr(self._client, resource), verb)(
             params, metadata=metadata
